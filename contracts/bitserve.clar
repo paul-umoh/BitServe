@@ -116,24 +116,27 @@
   (let
     ((brand (unwrap! (map-get? Brands tx-sender) (err err-not-brand-owner)))
      (product-id (+ (var-get product-counter) u1))
-     (name-length (len name)))
+     (name-length (len name))
+     (description-length (len description)))
     
-    ;; Add validation for non-empty name
-    (if (> name-length u0)
-      (if (> price u0)
-        (begin
-          (var-set product-counter product-id)
-          (ok (map-set Products product-id {
-            brand: tx-sender,
-            name: name,
-            description: description,
-            price: price,
-            available: true,
-            created-at: stacks-block-height,
-            is-auction: false
-          })))
-        (err err-invalid-price))
-      (err (err u111))) ;; Wrap the error code in an err response
+    ;; Add validation for non-empty name and description
+    (if (>= name-length min-name-length)
+      (if (>= description-length min-description-length)
+        (if (> price u0)
+          (begin
+            (var-set product-counter product-id)
+            (ok (map-set Products product-id {
+              brand: tx-sender,
+              name: name,
+              description: description,
+              price: price,
+              available: true,
+              created-at: stacks-block-height,
+              is-auction: false
+            })))
+          (err err-invalid-price))
+        (err err-empty-description))
+      (err err-empty-name))
   )
 )
 
@@ -175,30 +178,36 @@
   (let
     ((brand (unwrap! (map-get? Brands tx-sender) (err err-not-brand-owner)))
      (product-id (+ (var-get product-counter) u1))
-     (end-block (+ stacks-block-height duration)))
+     (end-block (+ stacks-block-height duration))
+     (name-length (len name))
+     (description-length (len description)))
     
-    (if (and (>= duration u10) (> min-price u0))
-      (begin
-        (var-set product-counter product-id)
-        (map-set Products product-id {
-          brand: tx-sender,
-          name: name,
-          description: description,
-          price: min-price,
-          available: true,
-          created-at: stacks-block-height,
-          is-auction: true
-        })
-        (ok (map-set Auctions product-id {
-          end-block: end-block,
-          min-price: min-price,
-          highest-bid: u0,
-          highest-bidder: none,
-          is-active: true
-        })))
-      (if (< duration u10)
-        (err err-invalid-duration)
-        (err err-invalid-price)))
+    (if (>= name-length min-name-length)
+      (if (>= description-length min-description-length)
+        (if (and (>= duration u10) (> min-price u0))
+          (begin
+            (var-set product-counter product-id)
+            (map-set Products product-id {
+              brand: tx-sender,
+              name: name,
+              description: description,
+              price: min-price,
+              available: true,
+              created-at: stacks-block-height,
+              is-auction: true
+            })
+            (ok (map-set Auctions product-id {
+              end-block: end-block,
+              min-price: min-price,
+              highest-bid: u0,
+              highest-bidder: none,
+              is-active: true
+            })))
+          (if (< duration u10)
+            (err err-invalid-duration)
+            (err err-invalid-price)))
+        (err err-empty-description))
+      (err err-empty-name))
   )
 )
 
@@ -276,18 +285,21 @@
     (rating uint)
     (comment (string-ascii 200)))
   (let
-    ((product (unwrap! (map-get? Products product-id) (err err-listing-not-found))))
-    ;; Make sure product exists and is a valid product
+    ((product (unwrap! (map-get? Products product-id) (err err-listing-not-found)))
+     (comment-length (len comment)))
+    ;; Make sure product exists and comment is not empty
     (if (is-some (map-get? Products product-id))
-      (if (<= rating u5)
-        (ok (map-set Reviews 
-          {product-id: product-id, reviewer: tx-sender}
-          {
-            rating: rating,
-            comment: comment,
-            timestamp: stacks-block-height
-          }))
-        (err err-invalid-rating))
+      (if (>= comment-length min-description-length)
+        (if (<= rating u5)
+          (ok (map-set Reviews 
+            {product-id: product-id, reviewer: tx-sender}
+            {
+              rating: rating,
+              comment: comment,
+              timestamp: stacks-block-height
+            }))
+          (err err-invalid-rating))
+        (err err-empty-description))
       (err err-listing-not-found))
   )
 )
