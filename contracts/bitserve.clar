@@ -154,3 +154,42 @@
       (err err-insufficient-funds))
   )
 )
+
+;; Auction Functions
+
+;; Create auction for a product
+(define-public (create-auction
+    (name (string-ascii 100))
+    (description (string-ascii 500))
+    (min-price uint)
+    (duration uint)
+  )
+  (let
+    ((brand (unwrap! (map-get? Brands tx-sender) (err err-not-brand-owner)))
+     (product-id (+ (var-get product-counter) u1))
+     (end-block (+ stacks-block-height duration)))
+    
+    (if (and (>= duration u10) (> min-price u0))
+      (begin
+        (var-set product-counter product-id)
+        (map-set Products product-id {
+          brand: tx-sender,
+          name: name,
+          description: description,
+          price: min-price,
+          available: true,
+          created-at: stacks-block-height,
+          is-auction: true
+        })
+        (ok (map-set Auctions product-id {
+          end-block: end-block,
+          min-price: min-price,
+          highest-bid: u0,
+          highest-bidder: none,
+          is-active: true
+        })))
+      (if (< duration u10)
+        (err err-invalid-duration)
+        (err err-invalid-price)))
+  )
+)
