@@ -99,3 +99,58 @@
         (merge brand-data {verified: true}))))
     (err err-owner-only))
 )
+
+;; Direct Sale Functions
+
+;; List a new product
+(define-public (list-product 
+    (name (string-ascii 100))
+    (description (string-ascii 500))
+    (price uint)
+  )
+  (let
+    ((brand (unwrap! (map-get? Brands tx-sender) (err err-not-brand-owner)))
+     (product-id (+ (var-get product-counter) u1)))
+    
+    (if (> price u0)
+      (begin
+        (var-set product-counter product-id)
+        (ok (map-set Products product-id {
+          brand: tx-sender,
+          name: name,
+          description: description,
+          price: price,
+          available: true,
+          created-at: stacks-block-height,
+          is-auction: false
+        })))
+      (err err-invalid-price)
+    )
+  )
+)
+
+;; Purchase a product
+(define-public (purchase-product (product-id uint))
+  (let
+    ((product (unwrap! (map-get? Products product-id) (err err-listing-not-found)))
+     (price (get price product))
+     (brand (get brand product))
+     (fee (/ (* price (var-get platform-fee)) u1000)))
+    
+    (if (and
+          (get available product)
+          (not (get is-auction product))
+          (>= (stx-get-balance tx-sender) price))
+      (let
+        ((fee-transfer-result (stx-transfer? fee tx-sender contract-owner))
+         (payment-transfer-result (stx-transfer? (- price fee) tx-sender brand)))
+        
+        (if (and 
+              (is-ok fee-transfer-result)
+              (is-ok payment-transfer-result))
+          (ok (map-set Products product-id 
+                (merge product {available: false})))
+          (err err-transfer-failed)))
+      (err err-insufficient-funds))
+  )
+)
