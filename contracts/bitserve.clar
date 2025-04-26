@@ -193,3 +193,41 @@
         (err err-invalid-price)))
   )
 )
+
+;; Place bid on auction
+(define-public (place-bid (product-id uint) (bid-amount uint))
+  (let
+    ((product (unwrap! (map-get? Products product-id) (err err-listing-not-found)))
+     (auction (unwrap! (map-get? Auctions product-id) (err err-no-active-auction))))
+    
+    (if (and 
+          (get is-active auction)
+          (<= stacks-block-height (get end-block auction))
+          (>= bid-amount (get min-price auction))
+          (> bid-amount (get highest-bid auction))
+          (>= (stx-get-balance tx-sender) bid-amount))
+      (let
+        ((return-result (match (get highest-bidder auction)
+          prev-bidder (stx-transfer? (get highest-bid auction) contract-owner prev-bidder)
+          (ok true)))
+         (bid-result (stx-transfer? bid-amount tx-sender contract-owner)))
+        
+        (if (and (is-ok return-result) (is-ok bid-result))
+          (ok (map-set Auctions product-id
+            (merge auction {
+              highest-bid: bid-amount,
+              highest-bidder: (some tx-sender)
+            })))
+          (err err-transfer-failed)))
+      ;; Replace cond with nested if statements
+      (if (not (get is-active auction))
+        (err err-auction-ended)
+        (if (> stacks-block-height (get end-block auction))
+          (err err-auction-ended)
+          (if (< bid-amount (get min-price auction))
+            (err err-bid-too-low)
+            (if (<= bid-amount (get highest-bid auction))
+              (err err-bid-too-low)
+              (err err-insufficient-funds))))))
+  )
+)
