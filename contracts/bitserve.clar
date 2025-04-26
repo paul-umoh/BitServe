@@ -63,3 +63,39 @@
     is-active: bool
   }
 )
+
+(define-map Reviews {product-id: uint, reviewer: principal}
+  {
+    rating: uint,
+    comment: (string-ascii 200),
+    timestamp: uint
+  }
+)
+
+;; Product ID counter
+(define-data-var product-counter uint u0)
+
+;; Brand Management Functions
+
+;; Register a new brand
+(define-public (register-brand (name (string-ascii 50)))
+  (let
+    ((brand-data {
+      name: name,
+      verified: false,
+      created-at: stacks-block-height
+    }))
+    (ok (map-set Brands tx-sender brand-data))
+  )
+)
+
+;; Verify a brand (owner only)
+(define-public (verify-brand (brand principal))
+  (if (is-eq tx-sender contract-owner)
+    (let
+      ((brand-data (unwrap! (map-get? Brands brand) 
+                   (err err-not-brand-owner))))
+      (ok (map-set Brands brand 
+        (merge brand-data {verified: true}))))
+    (err err-owner-only))
+)
