@@ -29,6 +29,10 @@
 (define-constant err-invalid-duration (err u108))
 (define-constant err-invalid-rating (err u109))
 (define-constant err-transfer-failed (err u110))
+(define-constant err-empty-name (err u111))
+(define-constant err-empty-description (err u112))
+(define-constant min-name-length u1)
+(define-constant min-description-length u1)
 
 ;; Data Variables
 (define-data-var platform-fee uint u25) ;; 2.5% fee
@@ -93,10 +97,11 @@
 (define-public (verify-brand (brand principal))
   (if (is-eq tx-sender contract-owner)
     (let
-      ((brand-data (unwrap! (map-get? Brands brand) 
-                   (err err-not-brand-owner))))
-      (ok (map-set Brands brand 
-        (merge brand-data {verified: true}))))
+      ((brand-data (unwrap! (map-get? Brands brand) (err err-not-brand-owner))))
+      ;; Check that the brand exists before modifying
+      (if (is-some (map-get? Brands brand))
+        (ok (map-set Brands brand (merge brand-data {verified: true})))
+        (err err-not-brand-owner)))
     (err err-owner-only))
 )
 
@@ -110,22 +115,25 @@
   )
   (let
     ((brand (unwrap! (map-get? Brands tx-sender) (err err-not-brand-owner)))
-     (product-id (+ (var-get product-counter) u1)))
+     (product-id (+ (var-get product-counter) u1))
+     (name-length (len name)))
     
-    (if (> price u0)
-      (begin
-        (var-set product-counter product-id)
-        (ok (map-set Products product-id {
-          brand: tx-sender,
-          name: name,
-          description: description,
-          price: price,
-          available: true,
-          created-at: stacks-block-height,
-          is-auction: false
-        })))
-      (err err-invalid-price)
-    )
+    ;; Add validation for non-empty name
+    (if (> name-length u0)
+      (if (> price u0)
+        (begin
+          (var-set product-counter product-id)
+          (ok (map-set Products product-id {
+            brand: tx-sender,
+            name: name,
+            description: description,
+            price: price,
+            available: true,
+            created-at: stacks-block-height,
+            is-auction: false
+          })))
+        (err err-invalid-price))
+      (err (err u111))) ;; Wrap the error code in an err response
   )
 )
 
@@ -268,17 +276,19 @@
     (rating uint)
     (comment (string-ascii 200)))
   (let
-    ((product (unwrap! (map-get? Products product-id) 
-              (err err-listing-not-found))))
-    (if (<= rating u5)
-      (ok (map-set Reviews 
-        {product-id: product-id, reviewer: tx-sender}
-        {
-          rating: rating,
-          comment: comment,
-          timestamp: stacks-block-height
-        }))
-      (err err-invalid-rating))
+    ((product (unwrap! (map-get? Products product-id) (err err-listing-not-found))))
+    ;; Make sure product exists and is a valid product
+    (if (is-some (map-get? Products product-id))
+      (if (<= rating u5)
+        (ok (map-set Reviews 
+          {product-id: product-id, reviewer: tx-sender}
+          {
+            rating: rating,
+            comment: comment,
+            timestamp: stacks-block-height
+          }))
+        (err err-invalid-rating))
+      (err err-listing-not-found))
   )
 )
 
